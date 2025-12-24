@@ -689,11 +689,18 @@
             const [x, y] = currentPos;
             const currentColor = grid[y][x];
             
-            // Get current color block
-            const currentBlock = getColorBlock(x, y, currentColor);
+            // Get current color block (only for non-white, non-black)
+            let currentBlock;
+            let edgePos;
             
-            // Find edge position based on DP and CC
-            const edgePos = findEdge(currentBlock, dp, cc);
+            if (currentColor !== '#FFFFFF' && currentColor !== '#000000') {
+                currentBlock = getColorBlock(x, y, currentColor);
+                edgePos = findEdge(currentBlock, dp, cc);
+            } else {
+                // For white or black, just use current position
+                currentBlock = { cells: [[x, y]], size: 1 };
+                edgePos = [x, y];
+            }
             
             // Try to move
             const nextPos = tryMove(edgePos);
@@ -705,23 +712,21 @@
             const [nx, ny] = nextPos;
             const nextColor = grid[ny][nx];
             
+            // Execute command if transitioning from color to color (non-white, non-black)
+            if (currentColor !== '#FFFFFF' && currentColor !== '#000000' &&
+                nextColor !== '#FFFFFF' && nextColor !== '#000000') {
+                executeCommand(currentColor, nextColor);
+            }
+            
+            // Update previous block size only if leaving a color block
+            if (currentColor !== '#FFFFFF' && currentColor !== '#000000') {
+                previousBlockSize = currentBlock.size;
+            }
+            
             // Update position
             currentPos = nextPos;
             currentCell = nextPos;
             updateCanvas();
-            
-            // Execute command if transitioning from non-white to non-white
-            if (currentColor !== '#FFFFFF' && nextColor !== '#FFFFFF' && 
-                currentColor !== '#000000' && nextColor !== '#000000') {
-                executeCommand(currentColor, nextColor);
-                baseColor = nextColor;
-            } else if (nextColor !== '#FFFFFF' && nextColor !== '#000000') {
-                baseColor = nextColor;
-            }
-            
-            // Update previous block size
-            previousBlockSize = currentBlock.size;
-            
             updateDebugDisplay();
             
             return isStepMode ? 'halt' : 'continue';
@@ -791,7 +796,7 @@
                     
                     // Check if blocked (out of bounds or black)
                     const isBlocked = (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) || 
-                                     (grid[y][x] === '#000000');
+                                     (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight && grid[y][x] === '#000000');
                     
                     if (isBlocked) {
                         // Flip CC and try again
@@ -823,7 +828,7 @@
                                                 grid[wy][wx] === '#000000');
                             
                             if (nextBlocked) {
-                                // Hit wall or black - rotate DP and try again from original position
+                                // Hit wall or black - flip CC and try again from original position
                                 break;
                             }
                             
@@ -850,7 +855,7 @@
                 
                 // Both CC flips failed - rotate DP
                 currentDp = (currentDp + 1) % 4;
-                // Reset CC to current value after DP rotation
+                // Reset CC to original value after DP rotation
                 currentCc = cc;
             }
             
