@@ -271,7 +271,7 @@
         <button class="btn btn-run" onclick="run()">▶ 実行</button>
         <button class="btn btn-step" onclick="step()">⏯ ステップ実行</button>
         <span style="margin-left: 20px; color: #888;">Grid: <span id="gridSize">10×10</span></span>
-        <button class="btn btn-download" onclick="downloadPPM()">💾 PPMダウンロード</button>
+        <button class="btn btn-download" onclick="copyPPM()">📋 PPMコピー</button>
     </div>
 
     <div class="main-container">
@@ -619,7 +619,7 @@
             alert('テスト');
         }
 
-        function downloadPPM() {
+        function copyPPM() {
             let ppm = `P3\n${gridWidth} ${gridHeight}\n255\n`;
             
             for (let y = 0; y < gridHeight; y++) {
@@ -634,13 +634,11 @@
                 ppm += row.join(' ') + '\n';
             }
             
-            const blob = new Blob([ppm], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'piet_program.ppm';
-            a.click();
-            URL.revokeObjectURL(url);
+            navigator.clipboard.writeText(ppm).then(() => {
+                alert('PPM形式のテキストをクリップボードにコピーしました');
+            }).catch(err => {
+                alert('コピーに失敗しました: ' + err);
+            });
         }
 
         initColorPalette();
