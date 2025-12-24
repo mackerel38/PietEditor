@@ -85,12 +85,32 @@
             border: none;
             cursor: pointer;
             transition: all 0.2s;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: bold;
+            color: #000;
+            text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff;
         }
         .color-btn:hover {
             opacity: 0.8;
         }
         .color-btn.selected {
             box-shadow: 0 0 0 3px #fff inset;
+        }
+        .color-btn .command-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 9px;
+            font-weight: bold;
+            color: #000;
+            text-shadow: 0 0 2px #fff, 0 0 2px #fff;
+            pointer-events: none;
+            white-space: nowrap;
         }
         .eyedropper-btn {
             width: 100%;
@@ -348,8 +368,19 @@
         let cellSize = 30;
         let grid = [];
         let selectedColor = '#FFFFFF';
+        let selectedColorIndex = 18; // white
         let currentCell = null;
         let eyedropperMode = false;
+
+        // Piet commands based on hue change and lightness change
+        const PIET_COMMANDS = [
+            ['—', 'push', 'pop'],
+            ['add', 'sub', 'mul'],
+            ['div', 'mod', 'not'],
+            ['gtr', 'ptr', 'swi'],
+            ['dup', 'roll', 'inn'],
+            ['inc', 'out', 'ouc']
+        ];
 
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
@@ -427,14 +458,74 @@
                 }
                 paletteSpecial.appendChild(btn);
             }
+            
+            // Initial command display (none for white)
+            updateCommandDisplay();
         }
 
         function selectColor(color, btn) {
             document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('selected'));
             btn.classList.add('selected');
             selectedColor = color;
+            
+            // Find color index
+            for (let i = 0; i < PIET_COLORS.length; i++) {
+                if (PIET_COLORS[i].color === color) {
+                    selectedColorIndex = i;
+                    break;
+                }
+            }
+            
             eyedropperMode = false;
             document.getElementById('eyedropperBtn').classList.remove('active');
+            updateCommandDisplay();
+        }
+
+        function updateCommandDisplay() {
+            const colorBtns = document.querySelectorAll('#colorPalette .color-btn');
+            
+            // Clear all command texts
+            colorBtns.forEach(btn => {
+                const existingText = btn.querySelector('.command-text');
+                if (existingText) {
+                    existingText.remove();
+                }
+            });
+            
+            // If white or black is selected, don't show commands
+            if (selectedColorIndex >= 18) {
+                return;
+            }
+            
+            // Calculate hue and lightness of selected color
+            const selectedHue = selectedColorIndex % 6;
+            const selectedLightness = Math.floor(selectedColorIndex / 6);
+            
+            // Display commands for each color
+            const colorOrder = [
+                0, 6, 12,   // red colors
+                1, 7, 13,   // yellow colors
+                2, 8, 14,   // green colors
+                3, 9, 15,   // cyan colors
+                4, 10, 16,  // blue colors
+                5, 11, 17   // magenta colors
+            ];
+            
+            colorOrder.forEach((colorIdx, btnIdx) => {
+                const targetHue = colorIdx % 6;
+                const targetLightness = Math.floor(colorIdx / 6);
+                
+                const hueChange = (targetHue - selectedHue + 6) % 6;
+                const lightnessChange = (targetLightness - selectedLightness + 3) % 3;
+                
+                const command = PIET_COMMANDS[hueChange][lightnessChange];
+                
+                const btn = colorBtns[btnIdx];
+                const commandText = document.createElement('span');
+                commandText.className = 'command-text';
+                commandText.textContent = command;
+                btn.appendChild(commandText);
+            });
         }
 
         function toggleEyedropper() {
@@ -460,10 +551,12 @@
                         btn.classList.remove('selected');
                         if (PIET_COLORS[i].color === selectedColor) {
                             btn.classList.add('selected');
+                            selectedColorIndex = i;
                         }
                     });
                     eyedropperMode = false;
                     document.getElementById('eyedropperBtn').classList.remove('active');
+                    updateCommandDisplay();
                 } else {
                     grid[y][x] = selectedColor;
                     updateCanvas();
