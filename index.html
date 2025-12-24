@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pietエディタ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1e1e1e;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .header {
+            background: #252526;
+            padding: 10px 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            border-bottom: 1px solid #3e3e42;
+        }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .btn-run {
+            background: #0e639c;
+            color: white;
+        }
+        .btn-run:hover {
+            background: #1177bb;
+        }
+        .btn-step {
+            background: #0aa;
+            color: white;
+        }
+        .btn-step:hover {
+            background: #0cc;
+        }
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        .color-palette {
+            background: #252526;
+            padding: 20px;
+            width: 220px;
+            border-right: 1px solid #3e3e42;
+            display: flex;
+            flex-direction: column;
+        }
+        .palette-title {
+            font-size: 14px;
+            margin-bottom: 10px;
+            color: #ccc;
+        }
+        .color-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0;
+            margin-bottom: 0;
+        }
+        .color-grid-special {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0;
+            margin-bottom: 10px;
+        }
+        .color-btn {
+            width: 100%;
+            height: 50px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .color-btn:hover {
+            opacity: 0.8;
+        }
+        .color-btn.selected {
+            box-shadow: 0 0 0 3px #fff inset;
+        }
+        .eyedropper-btn {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            background: #444;
+            color: white;
+            border: 2px solid #666;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .eyedropper-btn:hover {
+            background: #555;
+        }
+        .eyedropper-btn.active {
+            background: #0aa;
+            border-color: #0ff;
+        }
+        .canvas-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            position: relative;
+        }
+        .grid-controls {
+            position: absolute;
+        }
+        .grid-controls.top {
+            top: 50%;
+            transform: translateY(-50%);
+            left: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .grid-controls.bottom {
+            top: 50%;
+            transform: translateY(-50%);
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .grid-controls.left {
+            left: 50%;
+            transform: translateX(-50%);
+            top: 20px;
+            display: flex;
+            gap: 5px;
+        }
+        .grid-controls.right {
+            left: 50%;
+            transform: translateX(-50%);
+            bottom: 20px;
+            display: flex;
+            gap: 5px;
+        }
+        .grid-btn {
+            padding: 5px 10px;
+            background: #444;
+            color: white;
+            border: 1px solid #666;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .grid-btn:hover {
+            background: #555;
+        }
+        canvas {
+            border: 2px solid #3e3e42;
+            background: white;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        .bottom-panel {
+            background: #252526;
+            border-top: 1px solid #3e3e42;
+            height: 200px;
+            display: flex;
+            overflow: hidden;
+        }
+        .panel-section {
+            flex: 1;
+            padding: 15px;
+            border-right: 1px solid #3e3e42;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        .panel-section:last-child {
+            border-right: none;
+        }
+        .variables-container {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            gap: 10px;
+        }
+        .variable-item {
+            flex: 1;
+            padding: 10px;
+            background: #1e1e1e;
+            border-radius: 4px;
+        }
+        .variable-label {
+            font-size: 11px;
+            color: #888;
+            margin-bottom: 5px;
+        }
+        .btn-download {
+            background: #444;
+            color: white;
+            margin-left: auto;
+        }
+        .btn-download:hover {
+            background: #555;
+        }
+        .panel-title {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+        .panel-content {
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            color: #ddd;
+            white-space: pre-wrap;
+        }
+        .stdin-input {
+            width: 100%;
+            height: 100%;
+            background: #1e1e1e;
+            border: 1px solid #3e3e42;
+            border-radius: 4px;
+            color: #ddd;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            padding: 10px;
+            resize: none;
+        }
+        .stdin-input:focus {
+            outline: none;
+            border-color: #0e639c;
+        }
+        .current-cell {
+            box-shadow: 0 0 0 3px #ff0 inset !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <button class="btn btn-run" onclick="run()">▶ 実行</button>
+        <button class="btn btn-step" onclick="step()">⏯ ステップ実行</button>
+        <span style="margin-left: 20px; color: #888;">Grid: <span id="gridSize">10×10</span></span>
+        <button class="btn btn-download" onclick="downloadPPM()">💾 PPMダウンロード</button>
+    </div>
+
+    <div class="main-container">
+        <div class="color-palette">
+            <div class="palette-title">カラーパレット</div>
+            <div class="color-grid" id="colorPalette"></div>
+            <div class="color-grid-special" id="colorPaletteSpecial"></div>
+            <button class="eyedropper-btn" id="eyedropperBtn" onclick="toggleEyedropper()">
+                🎨 スポイト
+            </button>
+        </div>
+
+        <div class="canvas-container">
+            <div class="grid-controls top">
+                <button class="grid-btn" onclick="addRow('top')">+ 行</button>
+                <button class="grid-btn" onclick="removeRow('top')">- 行</button>
+            </div>
+            <div class="grid-controls left">
+                <button class="grid-btn" onclick="addColumn('left')">+ 列</button>
+                <button class="grid-btn" onclick="removeColumn('left')">- 列</button>
+            </div>
+            
+            <canvas id="canvas"></canvas>
+            
+            <div class="grid-controls right">
+                <button class="grid-btn" onclick="addColumn('right')">+ 列</button>
+                <button class="grid-btn" onclick="removeColumn('right')">- 列</button>
+            </div>
+            <div class="grid-controls bottom">
+                <button class="grid-btn" onclick="addRow('bottom')">+ 行</button>
+                <button class="grid-btn" onclick="removeRow('bottom')">- 行</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="bottom-panel">
+        <div class="panel-section">
+            <div class="panel-title">標準入力</div>
+            <textarea class="stdin-input" id="stdin" placeholder="入力データを入力..."></textarea>
+        </div>
+        <div class="panel-section">
+            <div class="panel-title">標準出力</div>
+            <div class="panel-content" id="stdout">-</div>
+        </div>
+        <div class="panel-section">
+            <div class="panel-title">スタック</div>
+            <div class="panel-content" id="stack">[]</div>
+        </div>
+        <div class="panel-section">
+            <div class="panel-title">変数</div>
+            <div class="variables-container">
+                <div class="variable-item">
+                    <div class="variable-label">DP</div>
+                    <div class="panel-content" id="dp">right (0)</div>
+                </div>
+                <div class="variable-item">
+                    <div class="variable-label">CC</div>
+                    <div class="panel-content" id="cc">left (0)</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const PIET_COLORS = [
+            // Light hues (row 1)
+            { name: 'light red', color: '#FFC0C0' },
+            { name: 'light yellow', color: '#FFFFC0' },
+            { name: 'light green', color: '#C0FFC0' },
+            { name: 'light cyan', color: '#C0FFFF' },
+            { name: 'light blue', color: '#C0C0FF' },
+            { name: 'light magenta', color: '#FFC0FF' },
+            // Normal hues (row 2)
+            { name: 'red', color: '#FF0000' },
+            { name: 'yellow', color: '#FFFF00' },
+            { name: 'green', color: '#00FF00' },
+            { name: 'cyan', color: '#00FFFF' },
+            { name: 'blue', color: '#0000FF' },
+            { name: 'magenta', color: '#FF00FF' },
+            // Dark hues (row 3)
+            { name: 'dark red', color: '#C00000' },
+            { name: 'dark yellow', color: '#C0C000' },
+            { name: 'dark green', color: '#00C000' },
+            { name: 'dark cyan', color: '#00C0C0' },
+            { name: 'dark blue', color: '#0000C0' },
+            { name: 'dark magenta', color: '#C000C0' },
+            // Special
+            { name: 'white', color: '#FFFFFF' },
+            { name: 'black', color: '#000000' }
+        ];
+
+        let gridWidth = 10;
+        let gridHeight = 10;
+        let cellSize = 30;
+        let grid = [];
+        let selectedColor = '#FFFFFF';
+        let currentCell = null;
+        let eyedropperMode = false;
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        function initGrid() {
+            grid = [];
+            for (let y = 0; y < gridHeight; y++) {
+                grid[y] = [];
+                for (let x = 0; x < gridWidth; x++) {
+                    grid[y][x] = '#FFFFFF';
+                }
+            }
+            updateCanvas();
+        }
+
+        function updateCanvas() {
+            canvas.width = gridWidth * cellSize;
+            canvas.height = gridHeight * cellSize;
+            
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
+                    ctx.fillStyle = grid[y][x];
+                    ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                    
+                    ctx.strokeStyle = '#ddd';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                }
+            }
+
+            if (currentCell) {
+                const [cx, cy] = currentCell;
+                ctx.strokeStyle = '#ff0';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(cx * cellSize, cy * cellSize, cellSize, cellSize);
+            }
+
+            document.getElementById('gridSize').textContent = `${gridWidth}×${gridHeight}`;
+        }
+
+        function initColorPalette() {
+            const palette = document.getElementById('colorPalette');
+            const paletteSpecial = document.getElementById('colorPaletteSpecial');
+            
+            // 18色を横3列（濃度）×縦6行（色相）で配置
+            const colorOrder = [
+                0, 6, 12,   // light red, red, dark red
+                1, 7, 13,   // light yellow, yellow, dark yellow
+                2, 8, 14,   // light green, green, dark green
+                3, 9, 15,   // light cyan, cyan, dark cyan
+                4, 10, 16,  // light blue, blue, dark blue
+                5, 11, 17   // light magenta, magenta, dark magenta
+            ];
+            
+            colorOrder.forEach(i => {
+                const c = PIET_COLORS[i];
+                const btn = document.createElement('button');
+                btn.className = 'color-btn';
+                btn.style.background = c.color;
+                btn.title = c.name;
+                btn.onclick = () => selectColor(c.color, btn);
+                palette.appendChild(btn);
+            });
+            
+            // 白と黒
+            for (let i = 18; i < 20; i++) {
+                const c = PIET_COLORS[i];
+                const btn = document.createElement('button');
+                btn.className = 'color-btn';
+                btn.style.background = c.color;
+                btn.title = c.name;
+                btn.onclick = () => selectColor(c.color, btn);
+                if (i === 18) { // white
+                    btn.classList.add('selected');
+                }
+                paletteSpecial.appendChild(btn);
+            }
+        }
+
+        function selectColor(color, btn) {
+            document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            selectedColor = color;
+            eyedropperMode = false;
+            document.getElementById('eyedropperBtn').classList.remove('active');
+        }
+
+        function toggleEyedropper() {
+            eyedropperMode = !eyedropperMode;
+            const btn = document.getElementById('eyedropperBtn');
+            if (eyedropperMode) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        }
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / cellSize);
+            const y = Math.floor((e.clientY - rect.top) / cellSize);
+
+            if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
+                if (eyedropperMode) {
+                    selectedColor = grid[y][x];
+                    const colorBtns = document.querySelectorAll('.color-btn');
+                    colorBtns.forEach((btn, i) => {
+                        btn.classList.remove('selected');
+                        if (PIET_COLORS[i].color === selectedColor) {
+                            btn.classList.add('selected');
+                        }
+                    });
+                    eyedropperMode = false;
+                    document.getElementById('eyedropperBtn').classList.remove('active');
+                } else {
+                    grid[y][x] = selectedColor;
+                    updateCanvas();
+                }
+            }
+        });
+
+        function addRow(position) {
+            const newRow = new Array(gridWidth).fill('#FFFFFF');
+            if (position === 'top') {
+                grid.unshift(newRow);
+            } else {
+                grid.push(newRow);
+            }
+            gridHeight++;
+            updateCanvas();
+        }
+
+        function removeRow(position) {
+            if (gridHeight <= 1) return;
+            if (position === 'top') {
+                grid.shift();
+            } else {
+                grid.pop();
+            }
+            gridHeight--;
+            updateCanvas();
+        }
+
+        function addColumn(position) {
+            for (let y = 0; y < gridHeight; y++) {
+                if (position === 'left') {
+                    grid[y].unshift('#FFFFFF');
+                } else {
+                    grid[y].push('#FFFFFF');
+                }
+            }
+            gridWidth++;
+            updateCanvas();
+        }
+
+        function removeColumn(position) {
+            if (gridWidth <= 1) return;
+            for (let y = 0; y < gridHeight; y++) {
+                if (position === 'left') {
+                    grid[y].shift();
+                } else {
+                    grid[y].pop();
+                }
+            }
+            gridWidth--;
+            updateCanvas();
+        }
+
+        function run() {
+            alert('テスト');
+        }
+
+        function step() {
+            alert('テスト');
+        }
+
+        function downloadPPM() {
+            let ppm = `P3\n${gridWidth} ${gridHeight}\n255\n`;
+            
+            for (let y = 0; y < gridHeight; y++) {
+                const row = [];
+                for (let x = 0; x < gridWidth; x++) {
+                    const color = grid[y][x];
+                    const r = parseInt(color.slice(1, 3), 16);
+                    const g = parseInt(color.slice(3, 5), 16);
+                    const b = parseInt(color.slice(5, 7), 16);
+                    row.push(`${r} ${g} ${b}`);
+                }
+                ppm += row.join(' ') + '\n';
+            }
+            
+            const blob = new Blob([ppm], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'piet_program.ppm';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        initColorPalette();
+        initGrid();
+    </script>
+</body>
+</html>
