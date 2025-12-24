@@ -777,75 +777,84 @@
 
         function tryMove(fromPos) {
             const directions = [[1, 0], [0, 1], [-1, 0], [0, -1]];
-            const attempts = new Set();
             let currentDp = dp;
             let currentCc = cc;
             
+            // Try up to 4 DP rotations
             for (let rotations = 0; rotations < 4; rotations++) {
+                // Try up to 2 CC flips
                 for (let ccFlips = 0; ccFlips < 2; ccFlips++) {
-                    const key = `${currentDp},${currentCc}`;
-                    if (attempts.has(key)) {
-                        return null; // All attempts failed
-                    }
-                    attempts.add(key);
-                    
                     const [dx, dy] = directions[currentDp];
                     let [x, y] = fromPos;
                     x += dx;
                     y += dy;
                     
-                    // Check bounds
-                    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) {
+                    // Check if blocked (out of bounds or black)
+                    const isBlocked = (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) || 
+                                     (grid[y][x] === '#000000');
+                    
+                    if (isBlocked) {
+                        // Flip CC and try again
                         currentCc = 1 - currentCc;
                         continue;
                     }
                     
                     const color = grid[y][x];
                     
-                    // Black wall
-                    if (color === '#000000') {
-                        currentCc = 1 - currentCc;
-                        continue;
-                    }
-                    
                     // White - slide through
                     if (color === '#FFFFFF') {
                         const whiteVisited = new Set();
+                        let wx = x, wy = y;
+                        
                         while (true) {
-                            const wkey = `${x},${y}`;
+                            const wkey = `${wx},${wy}`;
                             if (whiteVisited.has(wkey)) {
-                                return null; // White loop detected
+                                // White loop detected - program terminates
+                                return null;
                             }
                             whiteVisited.add(wkey);
                             
-                            x += dx;
-                            y += dy;
+                            wx += dx;
+                            wy += dy;
                             
-                            if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) {
+                            // Check next cell
+                            const nextBlocked = (wx < 0 || wx >= gridWidth || wy < 0 || wy >= gridHeight) ||
+                                               (wx >= 0 && wx < gridWidth && wy >= 0 && wy < gridHeight && 
+                                                grid[wy][wx] === '#000000');
+                            
+                            if (nextBlocked) {
+                                // Hit wall or black - rotate DP and try again from original position
                                 break;
                             }
                             
-                            if (grid[y][x] !== '#FFFFFF') {
-                                if (grid[y][x] !== '#000000') {
-                                    dp = currentDp;
-                                    cc = currentCc;
-                                    return [x, y];
-                                }
-                                break;
+                            // Check if we exited white
+                            if (wx >= 0 && wx < gridWidth && wy >= 0 && wy < gridHeight && 
+                                grid[wy][wx] !== '#FFFFFF') {
+                                // Successfully exited white into a color block
+                                dp = currentDp;
+                                cc = currentCc;
+                                return [wx, wy];
                             }
                         }
+                        
+                        // White path blocked - flip CC and try again
                         currentCc = 1 - currentCc;
                         continue;
                     }
                     
-                    // Valid move
+                    // Valid move to color block
                     dp = currentDp;
                     cc = currentCc;
                     return [x, y];
                 }
+                
+                // Both CC flips failed - rotate DP
                 currentDp = (currentDp + 1) % 4;
+                // Reset CC to current value after DP rotation
+                currentCc = cc;
             }
             
+            // All attempts failed
             return null;
         }
 
