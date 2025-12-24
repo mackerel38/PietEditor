@@ -794,9 +794,13 @@
                     x += dx;
                     y += dy;
                     
-                    // Check if blocked (out of bounds or black)
-                    const isBlocked = (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) || 
-                                     (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight && grid[y][x] === '#000000');
+                    // Check if out of bounds or black
+                    let isBlocked;
+                    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) {
+                        isBlocked = true;
+                    } else {
+                        isBlocked = (grid[y][x] === '#000000');
+                    }
                     
                     if (isBlocked) {
                         // Flip CC and try again
@@ -823,9 +827,12 @@
                             wy += dy;
                             
                             // Check next cell
-                            const nextBlocked = (wx < 0 || wx >= gridWidth || wy < 0 || wy >= gridHeight) ||
-                                               (wx >= 0 && wx < gridWidth && wy >= 0 && wy < gridHeight && 
-                                                grid[wy][wx] === '#000000');
+                            let nextBlocked;
+                            if (wx < 0 || wx >= gridWidth || wy < 0 || wy >= gridHeight) {
+                                nextBlocked = true;
+                            } else {
+                                nextBlocked = (grid[wy][wx] === '#000000');
+                            }
                             
                             if (nextBlocked) {
                                 // Hit wall or black - flip CC and try again from original position
@@ -833,8 +840,7 @@
                             }
                             
                             // Check if we exited white
-                            if (wx >= 0 && wx < gridWidth && wy >= 0 && wy < gridHeight && 
-                                grid[wy][wx] !== '#FFFFFF') {
+                            if (grid[wy][wx] !== '#FFFFFF') {
                                 // Successfully exited white into a color block
                                 dp = currentDp;
                                 cc = currentCc;
