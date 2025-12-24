@@ -383,6 +383,8 @@
         let baseColor = null;
         let stepCount = 0;
         let outputBuffer = '';
+        let attemptCount = 0; // Track rotation/flip attempts
+        let whiteLoopDetector = new Set(); // Track white cell visits
 
         // Piet commands based on hue change and lightness change
         const PIET_COMMANDS = [
@@ -659,6 +661,8 @@
             stepCount = 0;
             outputBuffer = '';
             currentCell = [0, 0];
+            attemptCount = 0;
+            whiteLoopDetector = new Set();
             updateCanvas();
             updateDebugDisplay();
         }
@@ -689,43 +693,78 @@
             const [x, y] = currentPos;
             const currentColor = grid[y][x];
             
-            // Get current color block (only for non-white, non-black)
-            let currentBlock;
-            let edgePos;
-            
-            if (currentColor !== '#FFFFFF' && currentColor !== '#000000') {
-                currentBlock = getColorBlock(x, y, currentColor);
-                edgePos = findEdge(currentBlock, dp, cc);
+            // White cell loop detection
+            if (currentColor === '#FFFFFF') {
+                const key = `${x},${y},${dp}`;
+                if (whiteLoopDetector.has(key)) {
+                    // Loop detected in white cells
+                    return 'halt';
+                }
+                whiteLoopDetector.add(key);
             } else {
-                // For white or black, just use current position
-                currentBlock = { cells: [[x, y]], size: 1 };
+                // Reset loop detector when leaving white
+                whiteLoopDetector = new Set();
+            }
+            
+            // Get edge position for non-white, non-black cells
+            let edgePos;
+            if (currentColor !== '#FFFFFF' && currentColor !== '#000000') {
+                const currentBlock = getColorBlock(x, y, currentColor);
+                edgePos = findEdge(currentBlock, dp, cc);
+                previousBlockSize = currentBlock.size;
+            } else {
                 edgePos = [x, y];
             }
             
             // Try to move
-            const nextPos = tryMove(edgePos);
+            const directions = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+            const [dx, dy] = directions[dp];
+            let [nx, ny] = edgePos;
+            nx += dx;
+            ny += dy;
             
-            if (!nextPos) {
-                return 'halt';
+            // Check if blocked
+            const isBlocked = (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) ||
+                            (grid[ny][nx] === '#000000');
+            
+            if (isBlocked) {
+                // Blocked - try CC flip first
+                if (attemptCount % 2 === 0) {
+                    cc = 1 - cc;
+                    attemptCount++;
+                    updateCanvas();
+                    updateDebugDisplay();
+                    return isStepMode ? 'halt' : 'continue';
+                } else {
+                    // Already flipped CC - rotate DP
+                    dp = (dp + 1) % 4;
+                    attemptCount++;
+                    
+                    if (attemptCount >= 8) {
+                        // All attempts failed
+                        return 'halt';
+                    }
+                    
+                    updateCanvas();
+                    updateDebugDisplay();
+                    return isStepMode ? 'halt' : 'continue';
+                }
             }
             
-            const [nx, ny] = nextPos;
+            // Not blocked - can move
+            attemptCount = 0;
             const nextColor = grid[ny][nx];
             
-            // Execute command if transitioning from color to color (non-white, non-black)
+            // Execute command if transitioning from color to color
             if (currentColor !== '#FFFFFF' && currentColor !== '#000000' &&
                 nextColor !== '#FFFFFF' && nextColor !== '#000000') {
                 executeCommand(currentColor, nextColor);
             }
             
-            // Update previous block size only if leaving a color block
-            if (currentColor !== '#FFFFFF' && currentColor !== '#000000') {
-                previousBlockSize = currentBlock.size;
-            }
+            // Move to next position
+            currentPos = [nx, ny];
+            currentCell = [nx, ny];
             
-            // Update position
-            currentPos = nextPos;
-            currentCell = nextPos;
             updateCanvas();
             updateDebugDisplay();
             
@@ -814,6 +853,7 @@
                     if (color === '#FFFFFF') {
                         const whiteVisited = new Set();
                         let wx = x, wy = y;
+                        let whitePathBlocked = false;
                         
                         while (true) {
                             const wkey = `${wx},${wy}`;
@@ -835,7 +875,8 @@
                             }
                             
                             if (nextBlocked) {
-                                // Hit wall or black - flip CC and try again from original position
+                                // Hit wall or black - need to rotate DP, not flip CC
+                                whitePathBlocked = true;
                                 break;
                             }
                             
@@ -848,9 +889,10 @@
                             }
                         }
                         
-                        // White path blocked - flip CC and try again
-                        currentCc = 1 - currentCc;
-                        continue;
+                        if (whitePathBlocked) {
+                            // White path blocked - need to rotate DP, exit CC flip loop
+                            break;
+                        }
                     }
                     
                     // Valid move to color block
@@ -859,7 +901,7 @@
                     return [x, y];
                 }
                 
-                // Both CC flips failed - rotate DP
+                // Both CC flips failed or white path blocked - rotate DP
                 currentDp = (currentDp + 1) % 4;
                 // Reset CC to original value after DP rotation
                 currentCc = cc;
