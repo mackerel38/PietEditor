@@ -371,6 +371,18 @@
         let selectedColorIndex = 18; // white
         let currentCell = null;
         let eyedropperMode = false;
+        let isRunning = false;
+        let isStepMode = false;
+
+        // Interpreter state
+        let stack = [];
+        let dp = 0; // 0=right, 1=down, 2=left, 3=up
+        let cc = 0; // 0=left, 1=right
+        let currentPos = null;
+        let previousBlockSize = 0;
+        let baseColor = null;
+        let stepCount = 0;
+        let outputBuffer = '';
 
         // Piet commands based on hue change and lightness change
         const PIET_COMMANDS = [
@@ -381,6 +393,9 @@
             ['dup', 'roll', 'inn'],
             ['inc', 'out', 'ouc']
         ];
+
+        const DP_NAMES = ['right', 'down', 'left', 'up'];
+        const CC_NAMES = ['left', 'right'];
 
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
@@ -419,6 +434,13 @@
             }
 
             document.getElementById('gridSize').textContent = `${gridWidth}×${gridHeight}`;
+        }
+
+        function updateDebugDisplay() {
+            document.getElementById('stack').textContent = JSON.stringify(stack);
+            document.getElementById('dp').textContent = `${DP_NAMES[dp]} (${dp})`;
+            document.getElementById('cc').textContent = `${CC_NAMES[cc]} (${cc})`;
+            document.getElementById('stdout').textContent = outputBuffer || '-';
         }
 
         function initColorPalette() {
@@ -612,11 +634,359 @@
         }
 
         function run() {
-            alert('テスト');
+            resetInterpreter();
+            isRunning = true;
+            isStepMode = false;
+            runLoop();
         }
 
         function step() {
-            alert('テスト');
+            if (!isRunning) {
+                resetInterpreter();
+                isRunning = true;
+            }
+            isStepMode = true;
+            executeStep();
+        }
+
+        function resetInterpreter() {
+            stack = [];
+            dp = 0;
+            cc = 0;
+            currentPos = [0, 0];
+            previousBlockSize = 0;
+            baseColor = grid[0][0];
+            stepCount = 0;
+            outputBuffer = '';
+            currentCell = [0, 0];
+            updateCanvas();
+            updateDebugDisplay();
+        }
+
+        function runLoop() {
+            if (!isRunning) return;
+            
+            const result = executeStep();
+            
+            if (result === 'continue') {
+                setTimeout(runLoop, 50);
+            } else {
+                isRunning = false;
+                currentCell = null;
+                updateCanvas();
+                if (result === 'timeout') {
+                    alert('実行が1000000ステップを超えたため停止しました');
+                }
+            }
+        }
+
+        function executeStep() {
+            if (stepCount >= 1000000) {
+                return 'timeout';
+            }
+            stepCount++;
+
+            const [x, y] = currentPos;
+            const currentColor = grid[y][x];
+            
+            // Get current color block
+            const currentBlock = getColorBlock(x, y, currentColor);
+            
+            // Find edge position based on DP and CC
+            const edgePos = findEdge(currentBlock, dp, cc);
+            
+            // Try to move
+            const nextPos = tryMove(edgePos);
+            
+            if (!nextPos) {
+                return 'halt';
+            }
+            
+            const [nx, ny] = nextPos;
+            const nextColor = grid[ny][nx];
+            
+            // Update position
+            currentPos = nextPos;
+            currentCell = nextPos;
+            updateCanvas();
+            
+            // Execute command if transitioning from non-white to non-white
+            if (currentColor !== '#FFFFFF' && nextColor !== '#FFFFFF' && 
+                currentColor !== '#000000' && nextColor !== '#000000') {
+                executeCommand(currentColor, nextColor);
+                baseColor = nextColor;
+            } else if (nextColor !== '#FFFFFF' && nextColor !== '#000000') {
+                baseColor = nextColor;
+            }
+            
+            // Update previous block size
+            previousBlockSize = currentBlock.size;
+            
+            updateDebugDisplay();
+            
+            return isStepMode ? 'halt' : 'continue';
+        }
+
+        function getColorBlock(startX, startY, color) {
+            const visited = new Set();
+            const queue = [[startX, startY]];
+            const cells = [];
+            
+            while (queue.length > 0) {
+                const [x, y] = queue.shift();
+                const key = `${x},${y}`;
+                
+                if (visited.has(key)) continue;
+                if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) continue;
+                if (grid[y][x] !== color) continue;
+                
+                visited.add(key);
+                cells.push([x, y]);
+                
+                queue.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+            }
+            
+            return { cells, size: cells.length };
+        }
+
+        function findEdge(block, direction, chooser) {
+            const cells = block.cells;
+            
+            // Find edge based on DP direction
+            let edgeCells;
+            if (direction === 0) { // right
+                const maxX = Math.max(...cells.map(c => c[0]));
+                edgeCells = cells.filter(c => c[0] === maxX);
+                edgeCells.sort((a, b) => chooser === 0 ? a[1] - b[1] : b[1] - a[1]);
+            } else if (direction === 1) { // down
+                const maxY = Math.max(...cells.map(c => c[1]));
+                edgeCells = cells.filter(c => c[1] === maxY);
+                edgeCells.sort((a, b) => chooser === 0 ? b[0] - a[0] : a[0] - b[0]);
+            } else if (direction === 2) { // left
+                const minX = Math.min(...cells.map(c => c[0]));
+                edgeCells = cells.filter(c => c[0] === minX);
+                edgeCells.sort((a, b) => chooser === 0 ? b[1] - a[1] : a[1] - b[1]);
+            } else { // up
+                const minY = Math.min(...cells.map(c => c[1]));
+                edgeCells = cells.filter(c => c[1] === minY);
+                edgeCells.sort((a, b) => chooser === 0 ? a[0] - b[0] : b[0] - a[0]);
+            }
+            
+            return edgeCells[0];
+        }
+
+        function tryMove(fromPos) {
+            const directions = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+            const attempts = new Set();
+            let currentDp = dp;
+            let currentCc = cc;
+            
+            for (let rotations = 0; rotations < 4; rotations++) {
+                for (let ccFlips = 0; ccFlips < 2; ccFlips++) {
+                    const key = `${currentDp},${currentCc}`;
+                    if (attempts.has(key)) {
+                        return null; // All attempts failed
+                    }
+                    attempts.add(key);
+                    
+                    const [dx, dy] = directions[currentDp];
+                    let [x, y] = fromPos;
+                    x += dx;
+                    y += dy;
+                    
+                    // Check bounds
+                    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) {
+                        currentCc = 1 - currentCc;
+                        continue;
+                    }
+                    
+                    const color = grid[y][x];
+                    
+                    // Black wall
+                    if (color === '#000000') {
+                        currentCc = 1 - currentCc;
+                        continue;
+                    }
+                    
+                    // White - slide through
+                    if (color === '#FFFFFF') {
+                        const whiteVisited = new Set();
+                        while (true) {
+                            const wkey = `${x},${y}`;
+                            if (whiteVisited.has(wkey)) {
+                                return null; // White loop detected
+                            }
+                            whiteVisited.add(wkey);
+                            
+                            x += dx;
+                            y += dy;
+                            
+                            if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) {
+                                break;
+                            }
+                            
+                            if (grid[y][x] !== '#FFFFFF') {
+                                if (grid[y][x] !== '#000000') {
+                                    dp = currentDp;
+                                    cc = currentCc;
+                                    return [x, y];
+                                }
+                                break;
+                            }
+                        }
+                        currentCc = 1 - currentCc;
+                        continue;
+                    }
+                    
+                    // Valid move
+                    dp = currentDp;
+                    cc = currentCc;
+                    return [x, y];
+                }
+                currentDp = (currentDp + 1) % 4;
+            }
+            
+            return null;
+        }
+
+        function executeCommand(fromColor, toColor) {
+            const fromIdx = PIET_COLORS.findIndex(c => c.color === fromColor);
+            const toIdx = PIET_COLORS.findIndex(c => c.color === toColor);
+            
+            if (fromIdx < 0 || fromIdx >= 18 || toIdx < 0 || toIdx >= 18) return;
+            
+            const fromHue = fromIdx % 6;
+            const fromLight = Math.floor(fromIdx / 6);
+            const toHue = toIdx % 6;
+            const toLight = Math.floor(toIdx / 6);
+            
+            const hueChange = (toHue - fromHue + 6) % 6;
+            const lightChange = (toLight - fromLight + 3) % 3;
+            
+            const command = PIET_COMMANDS[hueChange][lightChange];
+            
+            executeCommandByName(command);
+        }
+
+        function executeCommandByName(cmd) {
+            const inputText = document.getElementById('stdin').value;
+            
+            switch(cmd) {
+                case '—': break;
+                case 'push':
+                    stack.push(previousBlockSize);
+                    break;
+                case 'pop':
+                    if (stack.length > 0) stack.pop();
+                    break;
+                case 'add':
+                    if (stack.length >= 2) {
+                        const b = stack.pop();
+                        const a = stack.pop();
+                        stack.push(a + b);
+                    }
+                    break;
+                case 'sub':
+                    if (stack.length >= 2) {
+                        const b = stack.pop();
+                        const a = stack.pop();
+                        stack.push(a - b);
+                    }
+                    break;
+                case 'mul':
+                    if (stack.length >= 2) {
+                        const b = stack.pop();
+                        const a = stack.pop();
+                        stack.push(a * b);
+                    }
+                    break;
+                case 'div':
+                    if (stack.length >= 2) {
+                        const b = stack.pop();
+                        const a = stack.pop();
+                        if (b !== 0) stack.push(Math.floor(a / b));
+                        else stack.push(0);
+                    }
+                    break;
+                case 'mod':
+                    if (stack.length >= 2) {
+                        const b = stack.pop();
+                        const a = stack.pop();
+                        if (b !== 0) stack.push(a % b);
+                        else stack.push(0);
+                    }
+                    break;
+                case 'not':
+                    if (stack.length >= 1) {
+                        const a = stack.pop();
+                        stack.push(a === 0 ? 1 : 0);
+                    }
+                    break;
+                case 'gtr':
+                    if (stack.length >= 2) {
+                        const b = stack.pop();
+                        const a = stack.pop();
+                        stack.push(a > b ? 1 : 0);
+                    }
+                    break;
+                case 'ptr':
+                    if (stack.length >= 1) {
+                        const a = stack.pop();
+                        dp = ((dp + a) % 4 + 4) % 4;
+                    }
+                    break;
+                case 'swi':
+                    if (stack.length >= 1) {
+                        const a = stack.pop();
+                        if (Math.abs(a) % 2 === 1) {
+                            cc = 1 - cc;
+                        }
+                    }
+                    break;
+                case 'dup':
+                    if (stack.length >= 1) {
+                        const a = stack[stack.length - 1];
+                        stack.push(a);
+                    }
+                    break;
+                case 'roll':
+                    if (stack.length >= 2) {
+                        const rolls = stack.pop();
+                        const depth = stack.pop();
+                        if (depth > 0 && depth <= stack.length) {
+                            const top = stack.splice(stack.length - depth);
+                            const normalizedRolls = ((rolls % depth) + depth) % depth;
+                            for (let i = 0; i < normalizedRolls; i++) {
+                                top.unshift(top.pop());
+                            }
+                            stack.push(...top);
+                        }
+                    }
+                    break;
+                case 'inn':
+                    const num = parseInt(inputText);
+                    if (!isNaN(num)) {
+                        stack.push(num);
+                    }
+                    break;
+                case 'inc':
+                    if (inputText.length > 0) {
+                        stack.push(inputText.charCodeAt(0));
+                    }
+                    break;
+                case 'out':
+                    if (stack.length >= 1) {
+                        const val = stack.pop();
+                        outputBuffer += val;
+                    }
+                    break;
+                case 'ouc':
+                    if (stack.length >= 1) {
+                        const val = stack.pop();
+                        outputBuffer += String.fromCharCode(val);
+                    }
+                    break;
+            }
         }
 
         function copyPPM() {
