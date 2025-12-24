@@ -49,6 +49,13 @@
         .btn-step:hover {
             background: #0cc;
         }
+        .btn-reset {
+            background: #c93;
+            color: white;
+        }
+        .btn-reset:hover {
+            background: #da4;
+        }
         .main-container {
             display: flex;
             flex: 1;
@@ -195,6 +202,34 @@
             border-top: 1px solid #3e3e42;
             height: 200px;
             display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .panel-tabs {
+            display: flex;
+            background: #1e1e1e;
+            border-bottom: 1px solid #3e3e42;
+        }
+        .panel-tab {
+            padding: 8px 16px;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            color: #888;
+            font-size: 12px;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        .panel-tab:hover {
+            color: #fff;
+        }
+        .panel-tab.active {
+            color: #fff;
+            border-bottom-color: #0e639c;
+        }
+        .panel-content-container {
+            display: flex;
+            flex: 1;
             overflow: hidden;
         }
         .panel-section {
@@ -261,8 +296,39 @@
             outline: none;
             border-color: #0e639c;
         }
-        .current-cell {
-            box-shadow: 0 0 0 3px #ff0 inset !important;
+        .log-section {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+        }
+        .log-item {
+            padding: 5px 10px;
+            margin-bottom: 2px;
+            background: #1e1e1e;
+            border-left: 3px solid #0e639c;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        .log-item.command {
+            border-left-color: #0aa;
+        }
+        .log-item.move {
+            border-left-color: #c93;
+        }
+        .log-item.rotate {
+            border-left-color: #da4;
+        }
+        .log-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+            color: #ccc;
         }
     </style>
 </head>
@@ -270,6 +336,7 @@
     <div class="header">
         <button class="btn btn-run" onclick="run()">▶ 実行</button>
         <button class="btn btn-step" onclick="step()">⏯ ステップ実行</button>
+        <button class="btn btn-reset" onclick="resetExecution()">🔄 実行リセット</button>
         <span style="margin-left: 20px; color: #888;">Grid: <span id="gridSize">10×10</span></span>
         <button class="btn btn-download" onclick="copyPPM()">📋 PPMコピー</button>
     </div>
@@ -308,28 +375,51 @@
     </div>
 
     <div class="bottom-panel">
-        <div class="panel-section">
-            <div class="panel-title">標準入力</div>
-            <textarea class="stdin-input" id="stdin" placeholder="入力データを入力..."></textarea>
+        <div class="panel-tabs">
+            <button class="panel-tab active" onclick="switchTab(0)">入出力・スタック</button>
+            <button class="panel-tab" onclick="switchTab(1)">実行ログ</button>
         </div>
-        <div class="panel-section">
-            <div class="panel-title">標準出力</div>
-            <div class="panel-content" id="stdout">-</div>
-        </div>
-        <div class="panel-section">
-            <div class="panel-title">スタック</div>
-            <div class="panel-content" id="stack">[]</div>
-        </div>
-        <div class="panel-section">
-            <div class="panel-title">変数</div>
-            <div class="variables-container">
-                <div class="variable-item">
-                    <div class="variable-label">DP</div>
-                    <div class="panel-content" id="dp">right (0)</div>
+        <div class="panel-content-container" id="panelContainer">
+            <!-- Tab 0: IO and Stack -->
+            <div class="panel-view" id="panel0" style="display: flex; flex: 1;">
+                <div class="panel-section">
+                    <div class="panel-title">標準入力</div>
+                    <textarea class="stdin-input" id="stdin" placeholder="入力データを入力..."></textarea>
                 </div>
-                <div class="variable-item">
-                    <div class="variable-label">CC</div>
-                    <div class="panel-content" id="cc">left (0)</div>
+                <div class="panel-section">
+                    <div class="panel-title">標準出力</div>
+                    <div class="panel-content" id="stdout">-</div>
+                </div>
+                <div class="panel-section">
+                    <div class="panel-title">スタック</div>
+                    <div class="panel-content" id="stack">[]</div>
+                </div>
+                <div class="panel-section">
+                    <div class="panel-title">変数</div>
+                    <div class="variables-container">
+                        <div class="variable-item">
+                            <div class="variable-label">DP</div>
+                            <div class="panel-content" id="dp">right (0)</div>
+                        </div>
+                        <div class="variable-item">
+                            <div class="variable-label">CC</div>
+                            <div class="panel-content" id="cc">left (0)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tab 1: Execution Log -->
+            <div class="panel-view" id="panel1" style="display: none; flex: 1; flex-direction: column;">
+                <div class="log-section">
+                    <div class="log-controls">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="logEnabled" checked onchange="toggleLog()">
+                            ログを記録
+                        </label>
+                        <button class="btn" onclick="clearLog()" style="padding: 4px 8px; font-size: 11px;">クリア</button>
+                    </div>
+                    <div id="logContent"></div>
                 </div>
             </div>
         </div>
@@ -380,11 +470,14 @@
         let cc = 0; // 0=left, 1=right
         let currentPos = null;
         let previousBlockSize = 0;
-        let baseColor = null;
         let stepCount = 0;
         let outputBuffer = '';
-        let attemptCount = 0; // Track rotation/flip attempts
-        let whiteLoopDetector = new Set(); // Track white cell visits
+        let attemptCount = 0;
+        let whiteLoopDetector = new Set();
+
+        // Log
+        let executionLog = [];
+        let logEnabled = true;
 
         // Piet commands based on hue change and lightness change
         const PIET_COMMANDS = [
@@ -401,6 +494,45 @@
 
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+
+        function switchTab(index) {
+            const tabs = document.querySelectorAll('.panel-tab');
+            const panels = document.querySelectorAll('.panel-view');
+            
+            tabs.forEach((tab, i) => {
+                if (i === index) {
+                    tab.classList.add('active');
+                } else {
+                    tab.classList.remove('active');
+                }
+            });
+            
+            panels.forEach((panel, i) => {
+                panel.style.display = i === index ? 'flex' : 'none';
+            });
+        }
+
+        function addLog(message, type = 'info') {
+            if (!logEnabled) return;
+            
+            executionLog.push({ message, type, timestamp: Date.now() });
+            
+            const logContent = document.getElementById('logContent');
+            const logItem = document.createElement('div');
+            logItem.className = `log-item ${type}`;
+            logItem.textContent = message;
+            logContent.appendChild(logItem);
+            logContent.scrollTop = logContent.scrollHeight;
+        }
+
+        function clearLog() {
+            executionLog = [];
+            document.getElementById('logContent').innerHTML = '';
+        }
+
+        function toggleLog() {
+            logEnabled = document.getElementById('logEnabled').checked;
+        }
 
         function initGrid() {
             grid = [];
@@ -449,14 +581,13 @@
             const palette = document.getElementById('colorPalette');
             const paletteSpecial = document.getElementById('colorPaletteSpecial');
             
-            // 18色を横3列（濃度）×縦6行（色相）で配置
             const colorOrder = [
-                0, 6, 12,   // light red, red, dark red
-                1, 7, 13,   // light yellow, yellow, dark yellow
-                2, 8, 14,   // light green, green, dark green
-                3, 9, 15,   // light cyan, cyan, dark cyan
-                4, 10, 16,  // light blue, blue, dark blue
-                5, 11, 17   // light magenta, magenta, dark magenta
+                0, 6, 12,
+                1, 7, 13,
+                2, 8, 14,
+                3, 9, 15,
+                4, 10, 16,
+                5, 11, 17
             ];
             
             colorOrder.forEach(i => {
@@ -469,7 +600,6 @@
                 palette.appendChild(btn);
             });
             
-            // 白と黒
             for (let i = 18; i < 20; i++) {
                 const c = PIET_COLORS[i];
                 const btn = document.createElement('button');
@@ -477,13 +607,12 @@
                 btn.style.background = c.color;
                 btn.title = c.name;
                 btn.onclick = () => selectColor(c.color, btn);
-                if (i === 18) { // white
+                if (i === 18) {
                     btn.classList.add('selected');
                 }
                 paletteSpecial.appendChild(btn);
             }
             
-            // Initial command display (none for white)
             updateCommandDisplay();
         }
 
@@ -492,7 +621,6 @@
             btn.classList.add('selected');
             selectedColor = color;
             
-            // Find color index
             for (let i = 0; i < PIET_COLORS.length; i++) {
                 if (PIET_COLORS[i].color === color) {
                     selectedColorIndex = i;
@@ -508,7 +636,6 @@
         function updateCommandDisplay() {
             const colorBtns = document.querySelectorAll('#colorPalette .color-btn');
             
-            // Clear all command texts
             colorBtns.forEach(btn => {
                 const existingText = btn.querySelector('.command-text');
                 if (existingText) {
@@ -516,23 +643,20 @@
                 }
             });
             
-            // If white or black is selected, don't show commands
             if (selectedColorIndex >= 18) {
                 return;
             }
             
-            // Calculate hue and lightness of selected color
             const selectedHue = selectedColorIndex % 6;
             const selectedLightness = Math.floor(selectedColorIndex / 6);
             
-            // Display commands for each color
             const colorOrder = [
-                0, 6, 12,   // red colors
-                1, 7, 13,   // yellow colors
-                2, 8, 14,   // green colors
-                3, 9, 15,   // cyan colors
-                4, 10, 16,  // blue colors
-                5, 11, 17   // magenta colors
+                0, 6, 12,
+                1, 7, 13,
+                2, 8, 14,
+                3, 9, 15,
+                4, 10, 16,
+                5, 11, 17
             ];
             
             colorOrder.forEach((colorIdx, btnIdx) => {
@@ -636,28 +760,29 @@
         }
 
         function run() {
-            resetInterpreter();
+            resetExecution();
             isRunning = true;
             isStepMode = false;
+            addLog('実行開始', 'info');
             runLoop();
         }
 
         function step() {
             if (!isRunning) {
-                resetInterpreter();
+                resetExecution();
                 isRunning = true;
+                addLog('ステップ実行開始', 'info');
             }
             isStepMode = true;
             executeStep();
         }
 
-        function resetInterpreter() {
+        function resetExecution() {
             stack = [];
             dp = 0;
             cc = 0;
             currentPos = [0, 0];
             previousBlockSize = 0;
-            baseColor = grid[0][0];
             stepCount = 0;
             outputBuffer = '';
             currentCell = [0, 0];
@@ -665,6 +790,7 @@
             whiteLoopDetector = new Set();
             updateCanvas();
             updateDebugDisplay();
+            addLog('実行リセット', 'info');
         }
 
         function runLoop() {
@@ -680,6 +806,9 @@
                 updateCanvas();
                 if (result === 'timeout') {
                     alert('実行が1000000ステップを超えたため停止しました');
+                    addLog('タイムアウト', 'info');
+                } else {
+                    addLog('実行終了', 'info');
                 }
             }
         }
@@ -697,16 +826,15 @@
             if (currentColor === '#FFFFFF') {
                 const key = `${x},${y},${dp}`;
                 if (whiteLoopDetector.has(key)) {
-                    // Loop detected in white cells
+                    addLog(`白マスループ検出 at (${x}, ${y})`, 'info');
                     return 'halt';
                 }
                 whiteLoopDetector.add(key);
             } else {
-                // Reset loop detector when leaving white
                 whiteLoopDetector = new Set();
             }
             
-            // Get edge position for non-white, non-black cells
+            // Get edge position for color blocks
             let edgePos;
             if (currentColor !== '#FFFFFF' && currentColor !== '#000000') {
                 const currentBlock = getColorBlock(x, y, currentColor);
@@ -728,23 +856,40 @@
                             (grid[ny][nx] === '#000000');
             
             if (isBlocked) {
-                // Blocked - try CC flip first
+                // In white cell, only rotate DP
+                if (currentColor === '#FFFFFF') {
+                    dp = (dp + 1) % 4;
+                    attemptCount++;
+                    
+                    if (attemptCount >= 4) {
+                        addLog(`白マスで全方向ブロック at (${x}, ${y})`, 'info');
+                        return 'halt';
+                    }
+                    
+                    addLog(`白マス: DP回転 → ${DP_NAMES[dp]}`, 'rotate');
+                    updateCanvas();
+                    updateDebugDisplay();
+                    return isStepMode ? 'halt' : 'continue';
+                }
+                
+                // In color block, try CC flip first
                 if (attemptCount % 2 === 0) {
                     cc = 1 - cc;
                     attemptCount++;
+                    addLog(`ブロック: CC反転 → ${CC_NAMES[cc]}`, 'rotate');
                     updateCanvas();
                     updateDebugDisplay();
                     return isStepMode ? 'halt' : 'continue';
                 } else {
-                    // Already flipped CC - rotate DP
                     dp = (dp + 1) % 4;
                     attemptCount++;
                     
                     if (attemptCount >= 8) {
-                        // All attempts failed
+                        addLog('全方向ブロック', 'info');
                         return 'halt';
                     }
                     
+                    addLog(`ブロック: DP回転 → ${DP_NAMES[dp]}`, 'rotate');
                     updateCanvas();
                     updateDebugDisplay();
                     return isStepMode ? 'halt' : 'continue';
@@ -758,10 +903,13 @@
             // Execute command if transitioning from color to color
             if (currentColor !== '#FFFFFF' && currentColor !== '#000000' &&
                 nextColor !== '#FFFFFF' && nextColor !== '#000000') {
+                const cmd = getCommand(currentColor, nextColor);
+                addLog(`コマンド実行: ${cmd} (${getColorName(currentColor)} → ${getColorName(nextColor)})`, 'command');
                 executeCommand(currentColor, nextColor);
             }
             
-            // Move to next position
+            // Move
+            addLog(`移動: (${x}, ${y}) → (${nx}, ${ny}) [${getColorName(currentColor)} → ${getColorName(nextColor)}]`, 'move');
             currentPos = [nx, ny];
             currentCell = [nx, ny];
             
@@ -769,6 +917,28 @@
             updateDebugDisplay();
             
             return isStepMode ? 'halt' : 'continue';
+        }
+
+        function getColorName(color) {
+            const c = PIET_COLORS.find(p => p.color === color);
+            return c ? c.name : 'unknown';
+        }
+
+        function getCommand(fromColor, toColor) {
+            const fromIdx = PIET_COLORS.findIndex(c => c.color === fromColor);
+            const toIdx = PIET_COLORS.findIndex(c => c.color === toColor);
+            
+            if (fromIdx < 0 || fromIdx >= 18 || toIdx < 0 || toIdx >= 18) return '—';
+            
+            const fromHue = fromIdx % 6;
+            const fromLight = Math.floor(fromIdx / 6);
+            const toHue = toIdx % 6;
+            const toLight = Math.floor(toIdx / 6);
+            
+            const hueChange = (toHue - fromHue + 6) % 6;
+            const lightChange = (toLight - fromLight + 3) % 3;
+            
+            return PIET_COMMANDS[hueChange][lightChange];
         }
 
         function getColorBlock(startX, startY, color) {
@@ -796,119 +966,26 @@
         function findEdge(block, direction, chooser) {
             const cells = block.cells;
             
-            // Find edge based on DP direction
             let edgeCells;
-            if (direction === 0) { // right
+            if (direction === 0) {
                 const maxX = Math.max(...cells.map(c => c[0]));
                 edgeCells = cells.filter(c => c[0] === maxX);
                 edgeCells.sort((a, b) => chooser === 0 ? a[1] - b[1] : b[1] - a[1]);
-            } else if (direction === 1) { // down
+            } else if (direction === 1) {
                 const maxY = Math.max(...cells.map(c => c[1]));
                 edgeCells = cells.filter(c => c[1] === maxY);
                 edgeCells.sort((a, b) => chooser === 0 ? b[0] - a[0] : a[0] - b[0]);
-            } else if (direction === 2) { // left
+            } else if (direction === 2) {
                 const minX = Math.min(...cells.map(c => c[0]));
                 edgeCells = cells.filter(c => c[0] === minX);
                 edgeCells.sort((a, b) => chooser === 0 ? b[1] - a[1] : a[1] - b[1]);
-            } else { // up
+            } else {
                 const minY = Math.min(...cells.map(c => c[1]));
                 edgeCells = cells.filter(c => c[1] === minY);
                 edgeCells.sort((a, b) => chooser === 0 ? a[0] - b[0] : b[0] - a[0]);
             }
             
             return edgeCells[0];
-        }
-
-        function tryMove(fromPos) {
-            const directions = [[1, 0], [0, 1], [-1, 0], [0, -1]];
-            let currentDp = dp;
-            let currentCc = cc;
-            
-            // Try up to 4 DP rotations
-            for (let rotations = 0; rotations < 4; rotations++) {
-                // Try up to 2 CC flips
-                for (let ccFlips = 0; ccFlips < 2; ccFlips++) {
-                    const [dx, dy] = directions[currentDp];
-                    let [x, y] = fromPos;
-                    x += dx;
-                    y += dy;
-                    
-                    // Check if out of bounds or black
-                    let isBlocked;
-                    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) {
-                        isBlocked = true;
-                    } else {
-                        isBlocked = (grid[y][x] === '#000000');
-                    }
-                    
-                    if (isBlocked) {
-                        // Flip CC and try again
-                        currentCc = 1 - currentCc;
-                        continue;
-                    }
-                    
-                    const color = grid[y][x];
-                    
-                    // White - slide through
-                    if (color === '#FFFFFF') {
-                        const whiteVisited = new Set();
-                        let wx = x, wy = y;
-                        let whitePathBlocked = false;
-                        
-                        while (true) {
-                            const wkey = `${wx},${wy}`;
-                            if (whiteVisited.has(wkey)) {
-                                // White loop detected - program terminates
-                                return null;
-                            }
-                            whiteVisited.add(wkey);
-                            
-                            wx += dx;
-                            wy += dy;
-                            
-                            // Check next cell
-                            let nextBlocked;
-                            if (wx < 0 || wx >= gridWidth || wy < 0 || wy >= gridHeight) {
-                                nextBlocked = true;
-                            } else {
-                                nextBlocked = (grid[wy][wx] === '#000000');
-                            }
-                            
-                            if (nextBlocked) {
-                                // Hit wall or black - need to rotate DP, not flip CC
-                                whitePathBlocked = true;
-                                break;
-                            }
-                            
-                            // Check if we exited white
-                            if (grid[wy][wx] !== '#FFFFFF') {
-                                // Successfully exited white into a color block
-                                dp = currentDp;
-                                cc = currentCc;
-                                return [wx, wy];
-                            }
-                        }
-                        
-                        if (whitePathBlocked) {
-                            // White path blocked - need to rotate DP, exit CC flip loop
-                            break;
-                        }
-                    }
-                    
-                    // Valid move to color block
-                    dp = currentDp;
-                    cc = currentCc;
-                    return [x, y];
-                }
-                
-                // Both CC flips failed or white path blocked - rotate DP
-                currentDp = (currentDp + 1) % 4;
-                // Reset CC to original value after DP rotation
-                currentCc = cc;
-            }
-            
-            // All attempts failed
-            return null;
         }
 
         function executeCommand(fromColor, toColor) {
